@@ -1,0 +1,19 @@
+{
+  "name": "wav-converter",
+  "module": "index.ts",
+  "type": "module",
+  "scripts": {
+    "format": "prettier --write index.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/fluent-ffmpeg": "^2.1.24",
+    "prettier": "^3.3.3"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "fluent-ffmpeg": "^2.1.3"
+  }
+}
