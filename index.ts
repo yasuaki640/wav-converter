@@ -1,6 +1,5 @@
 import ffmpeg from "fluent-ffmpeg";
 import { parseArgs } from "util";
-import * as fs from "node:fs";
 
 const codecExtensions = {
   libmp3lame: "mp3",
@@ -32,7 +31,7 @@ function convert(
     });
 }
 
-function main() {
+async function main() {
   const { positionals } = parseArgs({
     args: Bun.argv,
     allowPositionals: true,
@@ -44,11 +43,12 @@ function main() {
   }
 
   const inputPath = positionals[2];
-
-  if (!fs.existsSync(inputPath)) {
+  const exists = await Bun.file(inputPath).exists();
+  if (!exists) {
     console.error("File not found");
     process.exit(1);
   }
+
   convert(inputPath);
 }
 
