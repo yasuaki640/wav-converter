@@ -10,7 +10,9 @@ const codecExtensions = {
 };
 type Codec = keyof typeof codecExtensions;
 
-function convert(
+const MAX_PARALLEL = 3;
+
+function convertSync(
   inputFilePath: string,
   {
     codec = "libmp3lame",
@@ -34,19 +36,23 @@ function convert(
 
   const outputName = path.join(finalOutputDir, fileName);
 
-  ffmpeg(inputFilePath)
-    .audioCodec(codec)
-    .audioBitrate(bitrate)
-    .save(outputName)
-    .on("start", (commandLine) => {
-      console.log("Spawned Ffmpeg with command: " + commandLine);
-    })
-    .on("error", (err) => {
-      console.log("An error occurred: " + err.message);
-    })
-    .on("end", () => {
-      console.log("Processing finished: " + outputName);
-    });
+  return new Promise((resolve, reject) => {
+    ffmpeg(inputFilePath)
+      .audioCodec(codec)
+      .audioBitrate(bitrate)
+      .save(outputName)
+      .on("start", (commandLine) => {
+        console.log("Spawned Ffmpeg with command: " + commandLine);
+      })
+      .on("error", (err) => {
+        console.log("An error occurred: " + err.message);
+        reject(err);
+      })
+      .on("end", () => {
+        console.log("Processing finished: " + outputName);
+        resolve(outputName);
+      });
+  });
 }
 
 function searchMixedWavRecursively(inputDir: string): string[] {
@@ -85,6 +91,7 @@ async function main() {
     console.error("Please specify input directory.");
     process.exit(1);
   }
+
   if (!fs.existsSync(inputDir)) {
     console.error(`Directory ${inputDir} does not exist.`);
     process.exit(1);
@@ -97,10 +104,15 @@ async function main() {
   }
 
   const outputDir = values.outputDir || inputDir;
-  for (const target of targets) {
-    convert(target, {
-      outputDir,
-    });
+  for (let i = 0; i < targets.length; i += MAX_PARALLEL) {
+    await Promise.all(
+      targets.slice(i, i + MAX_PARALLEL).map((target) =>
+        convertSync(target, {
+          outputDir,
+        }),
+      ),
+    );
+    console.log(`Processed ${i + MAX_PARALLEL} files.`);
   }
 }
 
