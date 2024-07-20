@@ -14,7 +14,7 @@ function convert(
   inputFilePath: string,
   {
     codec = "libmp3lame",
-    bitrate = 192,
+    bitrate = 256,
     outputDir,
   }: {
     codec?: Codec;
