@@ -12,7 +12,7 @@ type Codec = keyof typeof codecExtensions;
 
 const MAX_PARALLEL = 3;
 
-function convertSync(
+function buildConvertFn(
   inputFilePath: string,
   {
     codec = "libmp3lame",
@@ -36,23 +36,24 @@ function convertSync(
 
   const outputName = path.join(finalOutputDir, fileName);
 
-  return new Promise((resolve, reject) => {
-    ffmpeg(inputFilePath)
-      .audioCodec(codec)
-      .audioBitrate(bitrate)
-      .save(outputName)
-      .on("start", (commandLine) => {
-        console.log("Spawned Ffmpeg with command: " + commandLine);
-      })
-      .on("error", (err) => {
-        console.log("An error occurred: " + err.message);
-        reject(err);
-      })
-      .on("end", () => {
-        console.log("Processing finished: " + outputName);
-        resolve(outputName);
-      });
-  });
+  return () =>
+    new Promise((resolve, reject) => {
+      ffmpeg(inputFilePath)
+        .audioCodec(codec)
+        .audioBitrate(bitrate)
+        .save(outputName)
+        .on("start", (commandLine) => {
+          console.log("Spawned Ffmpeg with command: " + commandLine);
+        })
+        .on("error", (err) => {
+          console.log("An error occurred: " + err.message);
+          reject(err);
+        })
+        .on("end", () => {
+          console.log("Processing finished: " + outputName);
+          resolve(outputName);
+        });
+    });
 }
 
 function searchMixedWavRecursively(inputDir: string): string[] {
@@ -105,13 +106,10 @@ async function main() {
 
   const outputDir = values.outputDir || inputDir;
   for (let i = 0; i < targets.length; i += MAX_PARALLEL) {
-    await Promise.all(
-      targets.slice(i, i + MAX_PARALLEL).map((target) =>
-        convertSync(target, {
-          outputDir,
-        }),
-      ),
-    );
+    const convertFn = targets
+      .slice(i, i + MAX_PARALLEL)
+      .map((target) => buildConvertFn(target, { outputDir }));
+    await Promise.all(convertFn.map((fn) => fn()));
     console.log(`Processed ${i + MAX_PARALLEL} files.`);
   }
 }
