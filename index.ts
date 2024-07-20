@@ -10,9 +10,9 @@ const codecExtensions = {
 };
 type Codec = keyof typeof codecExtensions;
 
-const MAX_PARALLEL = 3;
+const MAX_PARALLEL = 4;
 
-function buildConvertFn(
+function convertAsync(
   inputFilePath: string,
   {
     codec = "libmp3lame",
@@ -36,24 +36,23 @@ function buildConvertFn(
 
   const outputName = path.join(finalOutputDir, fileName);
 
-  return () =>
-    new Promise((resolve, reject) => {
-      ffmpeg(inputFilePath)
-        .audioCodec(codec)
-        .audioBitrate(bitrate)
-        .save(outputName)
-        .on("start", (commandLine) => {
-          console.log("Spawned Ffmpeg with command: " + commandLine);
-        })
-        .on("error", (err) => {
-          console.log("An error occurred: " + err.message);
-          reject(err);
-        })
-        .on("end", () => {
-          console.log("Processing finished: " + outputName);
-          resolve(outputName);
-        });
-    });
+  return new Promise((resolve, reject) => {
+    ffmpeg(inputFilePath)
+      .audioCodec(codec)
+      .audioBitrate(bitrate)
+      .save(outputName)
+      .on("start", (commandLine) => {
+        console.debug("Spawned Ffmpeg with command: " + commandLine);
+      })
+      .on("error", (err) => {
+        console.error("An error occurred: " + err.message);
+        reject(err);
+      })
+      .on("end", () => {
+        console.debug("Processing finished: " + outputName);
+        resolve(outputName);
+      });
+  });
 }
 
 function searchMixedWavRecursively(inputDir: string): string[] {
@@ -106,11 +105,11 @@ async function main() {
 
   const outputDir = values.outputDir || inputDir;
   for (let i = 0; i < targets.length; i += MAX_PARALLEL) {
-    const convertFn = targets
-      .slice(i, i + MAX_PARALLEL)
-      .map((target) => buildConvertFn(target, { outputDir }));
-    await Promise.all(convertFn.map((fn) => fn()));
-    console.log(`Processed ${i + MAX_PARALLEL} files.`);
+    const queue = targets.slice(i, i + MAX_PARALLEL);
+    await Promise.all(
+      queue.map((target) => convertAsync(target, { outputDir })),
+    );
+    console.log(`Processed ${i + queue.length}/${targets.length} files.`);
   }
 }
 
