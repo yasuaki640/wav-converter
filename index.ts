@@ -10,9 +10,9 @@ const codecExtensions = {
 };
 type Codec = keyof typeof codecExtensions;
 
-const MAX_PARALLEL = 4;
+const CHUNK_SIZE = 4;
 
-function convertAsync(
+function convert(
   inputFilePath: string,
   {
     codec = "libmp3lame",
@@ -104,12 +104,10 @@ async function main() {
   }
 
   const outputDir = values.outputDir || inputDir;
-  for (let i = 0; i < targets.length; i += MAX_PARALLEL) {
-    const queue = targets.slice(i, i + MAX_PARALLEL);
-    await Promise.all(
-      queue.map((target) => convertAsync(target, { outputDir })),
-    );
-    console.log(`Processed ${i + queue.length}/${targets.length} files.`);
+  for (let i = 0; i < targets.length; i += CHUNK_SIZE) {
+    const chunk = targets.slice(i, i + CHUNK_SIZE);
+    await Promise.all(chunk.map((target) => convert(target, { outputDir })));
+    console.log(`Processed ${i + chunk.length}/${targets.length} files.`);
   }
 }
 
