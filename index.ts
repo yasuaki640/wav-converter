@@ -3,58 +3,6 @@ import { parseArgs } from "util";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-const codecExtensions = {
-  libmp3lame: "mp3",
-  aac: "m4a",
-  pcm_s16le: "wav",
-};
-type Codec = keyof typeof codecExtensions;
-
-const CHUNK_SIZE = 4;
-
-function convert(
-  inputFilePath: string,
-  {
-    codec = "libmp3lame",
-    bitrate = 256,
-    outputDir,
-  }: {
-    codec?: Codec;
-    bitrate?: number;
-    outputDir?: string;
-  } = {},
-) {
-  const outputFileExt = codecExtensions[codec];
-  const fileName = path
-    .basename(inputFilePath)
-    .replace(path.extname(inputFilePath), `.${outputFileExt}`);
-  const finalOutputDir = outputDir || path.dirname(inputFilePath);
-
-  if (!fs.existsSync(finalOutputDir)) {
-    fs.mkdirSync(finalOutputDir, { recursive: true });
-  }
-
-  const outputName = path.join(finalOutputDir, fileName);
-
-  return new Promise((resolve, reject) => {
-    ffmpeg(inputFilePath)
-      .audioCodec(codec)
-      .audioBitrate(bitrate)
-      .save(outputName)
-      .on("start", (commandLine) => {
-        console.debug("Spawned Ffmpeg with command: " + commandLine);
-      })
-      .on("error", (err) => {
-        console.error("An error occurred: " + err.message);
-        reject(err);
-      })
-      .on("end", () => {
-        console.debug("Processing finished: " + outputName);
-        resolve(outputName);
-      });
-  });
-}
-
 function searchMixedWavRecursively(inputDir: string): string[] {
   const targets: string[] = [];
   const files = fs.readdirSync(inputDir);
@@ -67,6 +15,63 @@ function searchMixedWavRecursively(inputDir: string): string[] {
     }
   }
   return targets;
+}
+
+const codecExtensions = {
+  libmp3lame: "mp3",
+  aac: "m4a",
+  pcm_s16le: "wav",
+};
+type Codec = keyof typeof codecExtensions;
+
+type ConvertOptions = {
+  codec?: Codec;
+  bitrate?: number;
+  outputDir?: string;
+};
+
+async function processInChunk(targets: string[], options: ConvertOptions) {
+  function convert(
+      inputFilePath: string,
+      { codec = "libmp3lame", bitrate = 256, outputDir }: ConvertOptions = {},
+  ) {
+    const outputFileExt = codecExtensions[codec];
+    const fileName = path
+        .basename(inputFilePath)
+        .replace(path.extname(inputFilePath), `.${outputFileExt}`);
+    const finalOutputDir = outputDir || path.dirname(inputFilePath);
+
+    if (!fs.existsSync(finalOutputDir)) {
+      fs.mkdirSync(finalOutputDir, { recursive: true });
+    }
+
+    const outputName = path.join(finalOutputDir, fileName);
+
+    return new Promise((resolve, reject) => {
+      ffmpeg(inputFilePath)
+          .audioCodec(codec)
+          .audioBitrate(bitrate)
+          .save(outputName)
+          .on("start", (commandLine) => {
+            console.debug("Spawned Ffmpeg with command: " + commandLine);
+          })
+          .on("error", (err) => {
+            console.error("An error occurred: " + err.message);
+            reject(err);
+          })
+          .on("end", () => {
+            console.debug("Processing finished: " + outputName);
+            resolve(outputName);
+          });
+    });
+  }
+
+  const CHUNK_SIZE = 6;
+  for (let i = 0; i < targets.length; i += CHUNK_SIZE) {
+    const chunk = targets.slice(i, i + CHUNK_SIZE);
+    await Promise.all(chunk.map((target) => convert(target, options)));
+    console.log(`Processed ${i + chunk.length}/${targets.length} files.`);
+  }
 }
 
 async function main() {
@@ -104,11 +109,7 @@ async function main() {
   }
 
   const outputDir = values.outputDir || inputDir;
-  for (let i = 0; i < targets.length; i += CHUNK_SIZE) {
-    const chunk = targets.slice(i, i + CHUNK_SIZE);
-    await Promise.all(chunk.map((target) => convert(target, { outputDir })));
-    console.log(`Processed ${i + chunk.length}/${targets.length} files.`);
-  }
+  await processInChunk(targets, { outputDir });
 }
 
 main();
